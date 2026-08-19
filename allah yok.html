@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evde Kaos - Platform Oyunu</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #1a1a1a;
+            font-family: sans-serif;
+        }
+        canvas {
+            border: 3px solid #444;
+            border-radius: 6px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+        }
+
+        /* TV Paneli */
+        #tvPanel {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            border: 3px solid #e74c3c;
+            border-radius: 10px;
+            padding: 20px;
+            z-index: 100;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+        }
+        #tvPanel h2 {
+            margin-top: 0;
+            color: #e74c3c;
+        }
+        #kapatBtn {
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            cursor: pointer;
+            font-size: 24px;
+            font-weight: bold;
+            color: #e74c3c;
+            background: none;
+            border: none;
+            padding: 0;
+        }
+        #kapatBtn:hover {
+            color: #ff6b6b;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="oyunCanvas" width="800" height="600"></canvas>
+
+    <!-- TV Paneli -->
+    <div id="tvPanel">
+        <button id="kapatBtn">&times;</button>
+        <h2>Televizyon</h2>
+        <p>Burada televizyonla ilgili içerik gösterilecek.</p>
+        <p>Örneğin: Haberler, hava durumu veya sadece statik.</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('oyunCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // ---- Oyun sabitleri ----
+        const YERCEKIMI = 0.8;
+        const ZIPLAMA_GUCU = -15;
+        const HAREKET_HIZI = 5;
+
+        // ---- TV etkileşim alanı ----
+        const tvAlani = { x: 60, y: 390, genislik: 160, yukseklik: 45 };
+
+        // ---- Karakter ----
+        const karakter = {
+            x: 100,
+            y: 420,
+            genislik: 40,
+            yukseklik: 80,
+            hizX: 0,
+            hizY: 0,
+            yerdeMi: false,
+            yon: 1,
+            renkGomlek: '#8B0000',
+            renkPantolon: '#2F4F4F'
+        };
+
+        // ---- Platformlar ----
+        const platformlar = [
+            { x: 0, y: 500, genislik: 800, yukseklik: 100, tip: 'zemin' }
+        ];
+
+        // ---- Tuş durumları ----
+        const tuslar = {
+            sol: false,
+            sag: false,
+            zipla: false
+        };
+
+        // ---- TV Panel elemanları ----
+        const tvPanel = document.getElementById('tvPanel');
+        const kapatBtn = document.getElementById('kapatBtn');
+
+        kapatBtn.addEventListener('click', () => {
+            tvPanel.style.display = 'none';
+        });
+
+        // ---- Klavye dinleyicileri ----
+        window.addEventListener('keydown', (e) => {
+            switch(e.key.toLowerCase()) {
+                case 'a':
+                case 'arrowleft':
+                    tuslar.sol = true;
+                    e.preventDefault();
+                    break;
+                case 'd':
+                case 'arrowright':
+                    tuslar.sag = true;
+                    e.preventDefault();
+                    break;
+                case ' ':
+                case 'w':
+                case 'arrowup':
+                    tuslar.zipla = true;
+                    e.preventDefault();
+                    break;
+                case 'enter':
+                    // TV yakınında mı kontrol et
+                    if (karakterTVYakin()) {
+                        tvPanel.style.display = 'block';
+                    }
+                    e.preventDefault();
+                    break;
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            switch(e.key.toLowerCase()) {
+                case 'a':
+                case 'arrowleft':
+                    tuslar.sol = false;
+                    e.preventDefault();
+                    break;
+                case 'd':
+                case 'arrowright':
+                    tuslar.sag = false;
+                    e.preventDefault();
+                    break;
+                case ' ':
+                case 'w':
+                case 'arrowup':
+                    tuslar.zipla = false;
+                    e.preventDefault();
+                    break;
+            }
+        });
+
+        // ---- TV yakınlık kontrolü ----
+        function karakterTVYakin() {
+            // Karakter dikdörtgeni
+            const kx1 = karakter.x;
+            const ky1 = karakter.y;
+            const kx2 = karakter.x + karakter.genislik;
+            const ky2 = karakter.y + karakter.yukseklik;
+
+            // TV dikdörtgeni
+            const tx1 = tvAlani.x;
+            const ty1 = tvAlani.y;
+            const tx2 = tvAlani.x + tvAlani.genislik;
+            const ty2 = tvAlani.y + tvAlani.yukseklik;
+
+            // Dikdörtgen kesişim kontrolü
+            return (kx1 < tx2 && kx2 > tx1 && ky1 < ty2 && ky2 > ty1);
+        }
+
+        // ---- Fizik ve hareket güncelleme ----
+        function karakteriGuncelle() {
+            if (tuslar.sol) {
+                karakter.hizX = -HAREKET_HIZI;
+                karakter.yon = -1;
+            } else if (tuslar.sag) {
+                karakter.hizX = HAREKET_HIZI;
+                karakter.yon = 1;
+            } else {
+                karakter.hizX = 0;
+            }
+
+            if (tuslar.zipla && karakter.yerdeMi) {
+                karakter.hizY = ZIPLAMA_GUCU;
+                karakter.yerdeMi = false;
+                tuslar.zipla = false;
+            }
+
+            karakter.hizY += YERCEKIMI;
+            karakter.x += karakter.hizX;
+            karakter.y += karakter.hizY;
+
+            if (karakter.x < 0) karakter.x = 0;
+            if (karakter.x + karakter.genislik > canvas.width) {
+                karakter.x = canvas.width - karakter.genislik;
+            }
+
+            karakter.yerdeMi = false;
+            for (let p of platformlar) {
+                if (karakter.x + karakter.genislik > p.x &&
+                    karakter.x < p.x + p.genislik) {
+
+                    if (karakter.hizY > 0 &&
+                        karakter.y + karakter.yukseklik >= p.y &&
+                        karakter.y + karakter.yukseklik <= p.y + p.yukseklik + karakter.hizY + 5) {
+                        karakter.y = p.y - karakter.yukseklik;
+                        karakter.hizY = 0;
+                        karakter.yerdeMi = true;
+                    }
+                    else if (karakter.hizY < 0 &&
+                             karakter.y <= p.y + p.yukseklik &&
+                             karakter.y >= p.y) {
+                        karakter.y = p.y + p.yukseklik;
+                        karakter.hizY = 0;
+                    }
+                }
+            }
+
+            if (karakter.y + karakter.yukseklik > canvas.height) {
+                karakter.y = canvas.height - karakter.yukseklik;
+                karakter.hizY = 0;
+                karakter.yerdeMi = true;
+            }
+        }
+
+        // ---- Resim yükleme ----
+        const tabloResim = new Image();
+        tabloResim.src = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR5mT6ElOuTXDfc8OjXg7a0CdpgKArnZMUUIrImlK3_oDnECSC03XUw6Is&s=10";
+
+        // ---- Arka plan ve ev dekorasyonu çizimi ----
+        function arkaPlaniCiz() {
+            // Duvar kağıdı
+            ctx.fillStyle = '#8B7D6B';
+            ctx.fillRect(0, 0, canvas.width, 500);
+
+            ctx.strokeStyle = '#7A6C5A';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < canvas.width; i += 40) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, 500);
+                ctx.stroke();
+            }
+
+            // Süpürgelik
+            ctx.fillStyle = '#5C4033';
+            ctx.fillRect(0, 480, canvas.width, 20);
+
+            // Zemin
+            ctx.fillStyle = '#C19A6B';
+            ctx.fillRect(0, 500, canvas.width, 100);
+            ctx.strokeStyle = '#A0522D';
+            ctx.lineWidth = 1;
+            for (let i = 520; i < 600; i += 20) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(canvas.width, i);
+                ctx.stroke();
+            }
+
+            // Halı
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(150, 520, 500, 60);
+            ctx.strokeStyle = '#CD853F';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(170, 530, 460, 40);
+            ctx.fillStyle = '#D2691E';
+            ctx.fillRect(380, 540, 40, 20);
+
+            // Pencere
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(80, 80, 120, 150);
+            ctx.strokeStyle = '#5C4033';
+            ctx.lineWidth = 8;
+            ctx.strokeRect(80, 80, 120, 150);
+            ctx.beginPath();
+            ctx.moveTo(140, 80);
+            ctx.lineTo(140, 230);
+            ctx.moveTo(80, 155);
+            ctx.lineTo(200, 155);
+            ctx.stroke();
+
+            // Tablo çerçevesi
+            ctx.fillStyle = '#6B4226';
+            ctx.fillRect(600, 100, 80, 100);
+            // Tablo içi (resim)
+            if (tabloResim.complete && tabloResim.naturalWidth > 0) {
+                ctx.drawImage(tabloResim, 610, 110, 60, 80);
+            } else {
+                // Yükleme bekleme placeholder
+                ctx.fillStyle = '#D2B48C';
+                ctx.fillRect(610, 110, 60, 80);
+                ctx.fillStyle = '#A0522D';
+                ctx.fillRect(620, 120, 40, 30);
+                ctx.fillStyle = '#228B22';
+                ctx.fillRect(630, 155, 20, 15);
+            }
+
+            // Televizyon ünitesi
+            ctx.fillStyle = '#5C4033';
+            ctx.fillRect(50, 440, 180, 60);
+            ctx.fillStyle = '#8B5A2B';
+            ctx.fillRect(45, 435, 190, 10);
+            ctx.fillStyle = '#3D2F24';
+            ctx.fillRect(60, 450, 60, 40);
+            ctx.fillRect(130, 450, 60, 40);
+            ctx.fillStyle = '#DAA520';
+            ctx.fillRect(85, 465, 10, 5);
+            ctx.fillRect(155, 465, 10, 5);
+
+            // Televizyon
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(60, 390, 160, 45);
+            ctx.fillStyle = '#2F4F4F';
+            ctx.fillRect(70, 395, 140, 35);
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            ctx.fillRect(70, 395, 40, 35);
+            ctx.fillStyle = '#333';
+            ctx.fillRect(90, 435, 10, 5);
+            ctx.fillRect(180, 435, 10, 5);
+        }
+
+        // ---- Platformları çiz ----
+        function platformlariCiz() {
+            ctx.fillStyle = '#3D2F24';
+            ctx.fillRect(0, 500, canvas.width, 5);
+        }
+
+        // ---- Karakteri çiz ----
+        function karakteriCiz() {
+            const k = karakter;
+
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.beginPath();
+            ctx.ellipse(k.x + k.genislik/2, k.y + k.yukseklik + 5, 18, 6, 0, 0, Math.PI*2);
+            ctx.fill();
+
+            ctx.fillStyle = k.renkPantolon;
+            ctx.fillRect(k.x + 5, k.y + 50, 12, 30);
+            ctx.fillRect(k.x + 23, k.y + 50, 12, 30);
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(k.x + 3, k.y + 75, 15, 5);
+            ctx.fillRect(k.x + 22, k.y + 75, 15, 5);
+
+            ctx.fillStyle = k.renkGomlek;
+            ctx.fillRect(k.x, k.y + 25, k.genislik, 30);
+
+            ctx.fillStyle = '#A0522D';
+            if (k.yon === 1) {
+                ctx.fillRect(k.x + k.genislik - 2, k.y + 28, 12, 8);
+            } else {
+                ctx.fillRect(k.x - 10, k.y + 28, 12, 8);
+            }
+
+            ctx.fillStyle = '#FFDBAC';
+            ctx.fillRect(k.x + 8, k.y, 24, 25);
+
+            ctx.fillStyle = '#4A3728';
+            ctx.fillRect(k.x + 5, k.y - 3, 30, 8);
+
+            ctx.fillStyle = '#000';
+            if (k.yon === 1) {
+                ctx.fillRect(k.x + 26, k.y + 8, 4, 4);
+            } else {
+                ctx.fillRect(k.x + 10, k.y + 8, 4, 4);
+            }
+
+            ctx.fillStyle = '#000';
+            ctx.fillRect(k.x + 17, k.y + 18, 8, 2);
+        }
+
+        // ---- Ana oyun döngüsü ----
+        function oyunDongusu() {
+            karakteriGuncelle();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            arkaPlaniCiz();
+            platformlariCiz();
+            karakteriCiz();
+            requestAnimationFrame(oyunDongusu);
+        }
+
+        // Oyunu başlat
+        oyunDongusu();
+    </script>
+</body>
+</html>d
